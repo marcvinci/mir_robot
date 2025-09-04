@@ -1,27 +1,37 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import rclpy
 from rclpy.node import Node
+from rclpy.action import ActionServer, GoalResponse, CancelResponse
+from rclpy.action.server import ServerGoalHandle
 from rclpy.qos import qos_profile_system_default, qos_profile_sensor_data
 
 import time
 import copy
 import sys
 from collections.abc import Iterable
+from collections import OrderedDict
+import threading
+from typing import Any
 
 import mir_driver.rosbridge
 from rclpy_message_converter import message_converter
 from geometry_msgs.msg import TwistStamped
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import LaserScan
+from nav2_msgs.action import NavigateToPose
+import sensor_msgs.msg
 from tf2_msgs.msg import TFMessage
 from std_srvs.srv import Trigger
+from mir_msgs.action import MirMoveBase
+from action_msgs.msg import GoalStatusArray, GoalStatus
 
 tf_prefix = ''
 
 
 class TopicConfig(object):
-    def __init__(self, topic, topic_type, topic_renamed=None, latch=False, dict_filter=None,
-                 qos_profile=None):
+    def __init__(self, topic: str, topic_type: Any, topic_renamed: str | None = None, latch: bool = False, dict_filter: Any | None = None,
+                 qos_profile: Any | None = None) -> None:
         self.topic = topic
         if (topic_renamed):
             self.topic_ros2_name = topic_renamed
@@ -36,7 +46,30 @@ class TopicConfig(object):
             self.qos_profile = qos_profile_system_default
 
 
-def _odom_dict_filter(msg_dict,  to_ros2):
+class ActionConfig(object):
+    def __init__(self, mir_action_topic: str, action_type: Any, action_topic: str | None = None,
+                 goal_dict_filter: Any | None = None, cancel_dict_filter: Any | None = None, 
+                 feedback_dict_filter: Any | None = None, status_dict_filter: Any | None = None,
+                 result_dict_filter: Any | None = None, qos_profile: Any | None = None) -> None:
+        self.mir_action_topic = mir_action_topic
+        if action_topic is not None:
+            self.action_topic = action_topic
+        else:
+            self.action_topic = mir_action_topic
+        self.action_type = action_type
+        self.goal_dict_filter = goal_dict_filter
+        self.cancel_dict_filter = cancel_dict_filter
+        self.feedback_dict_filter = feedback_dict_filter
+        self.status_dict_filter = status_dict_filter
+        self.result_dict_filter = result_dict_filter
+
+        if qos_profile is not None:
+            self.qos_profile = qos_profile
+        else:
+            self.qos_profile = qos_profile_system_default
+
+
+def _odom_dict_filter(msg_dict: dict,  to_ros2: bool) -> dict:
     filtered_msg_dict = copy.deepcopy(msg_dict)
     filtered_msg_dict['header'] = _convert_ros_header(filtered_msg_dict['header'], to_ros2)
     filtered_msg_dict['child_frame_id'] = tf_prefix + \
@@ -44,7 +77,7 @@ def _odom_dict_filter(msg_dict,  to_ros2):
     return filtered_msg_dict
 
 
-def _tf_dict_filter(msg_dict, to_ros2):
+def _tf_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
     filtered_msg_dict = copy.deepcopy(msg_dict)
 
     for transform in filtered_msg_dict['transforms']:
@@ -53,14 +86,14 @@ def _tf_dict_filter(msg_dict, to_ros2):
     return filtered_msg_dict
 
 
-def _laser_scan_filter(msg_dict, to_ros2):
+def _laser_scan_filter(msg_dict: dict, to_ros2: bool) -> dict:
     filtered_msg_dict = copy.deepcopy(msg_dict)
     filtered_msg_dict['header'] = _convert_ros_header(
         filtered_msg_dict['header'], to_ros2)
     return filtered_msg_dict
 
 
-def _map_dict_filter(msg_dict, to_ros2):
+def _map_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
     filtered_msg_dict = copy.deepcopy(msg_dict)
     filtered_msg_dict['header'] = _convert_ros_header(
         filtered_msg_dict['header'], to_ros2)
@@ -70,7 +103,7 @@ def _map_dict_filter(msg_dict, to_ros2):
     return filtered_msg_dict
 
 
-def _convert_ros_time(time_msg_dict, to_ros2):
+def _convert_ros_time(time_msg_dict: dict, to_ros2: bool) -> dict:
     time_dict = copy.deepcopy(time_msg_dict)
     if to_ros2:
         # Conversion from MiR (ros1) to sys (ros2)
@@ -84,7 +117,7 @@ def _convert_ros_time(time_msg_dict, to_ros2):
     return time_dict
 
 
-def _convert_ros_header(header_msg_dict, to_ros2):
+def _convert_ros_header(header_msg_dict: dict, to_ros2: bool) -> dict:
     header_dict = copy.deepcopy(header_msg_dict)
     header_dict['stamp'] = _convert_ros_time(header_dict['stamp'], to_ros2)
     if to_ros2:
@@ -98,7 +131,7 @@ def _convert_ros_header(header_msg_dict, to_ros2):
     return header_dict
 
 
-def _prepend_tf_prefix_dict_filter(msg_dict):
+def _prepend_tf_prefix_dict_filter(msg_dict: dict) -> dict | None:
     # filtered_msg_dict = copy.deepcopy(msg_dict)
     if not isinstance(msg_dict, dict):   # can happen during recursion
         return
@@ -125,7 +158,7 @@ def _prepend_tf_prefix_dict_filter(msg_dict):
     return msg_dict
 
 
-def _remove_tf_prefix_dict_filter(msg_dict):
+def _remove_tf_prefix_dict_filter(msg_dict: dict) -> dict | None:
     # filtered_msg_dict = copy.deepcopy(msg_dict)
     if not isinstance(msg_dict, dict):   # can happen during recursion
         return
@@ -149,6 +182,78 @@ def _remove_tf_prefix_dict_filter(msg_dict):
     return msg_dict
 
 
+def _navigate_to_pose_goal_dict_filter(msg_dict: dict, goal_id_str: str) -> OrderedDict:
+    filtered_msg_dict = OrderedDict(goal=OrderedDict(), goal_id=OrderedDict())
+    filtered_msg_dict['goal_id']['id'] = goal_id_str
+    filtered_msg_dict['goal']['target_pose'] = copy.deepcopy(msg_dict['pose'])
+    filtered_msg_dict['goal']['target_pose']['header'] = _convert_ros_header(filtered_msg_dict['goal']['target_pose']['header'], False)
+    filtered_msg_dict['goal']['move_task'] = MirMoveBase.Goal.GLOBAL_MOVE
+    filtered_msg_dict['goal']['goal_dist_threshold'] = 0.25
+    filtered_msg_dict['goal']['clear_costmaps'] = True
+    return filtered_msg_dict
+
+
+def _navigate_to_pose_feedback_dict_filter(msg_dict: dict) -> OrderedDict:
+    filtered_msg_dict = OrderedDict()
+    filtered_msg_dict['current_pose'] = copy.deepcopy(msg_dict['feedback']['base_position'])
+    filtered_msg_dict['current_pose']['header'] = _convert_ros_header(filtered_msg_dict['current_pose']['header'], True)
+    return filtered_msg_dict
+
+
+def _navigate_to_pose_status_dict_filter(msg_dict: dict) -> None:
+    filtered_msg_dict = OrderedDict(status_list=[OrderedDict(),])
+    goal_status_code = 0
+    goal_id = ''
+    stamp = OrderedDict()
+    if len(msg_dict['status_list']) > 0:
+        goal_status_code = msg_dict['status_list'][0]['status']
+        goal_id = msg_dict['status_list'][0]['goal_id']['id']
+        stamp = _convert_ros_time(msg_dict['status_list'][0]['goal_id']['stamp'], True)
+    status = GoalStatus.STATUS_UNKNOWN
+
+    if goal_status_code == 0: # PENDING
+        status = GoalStatus.STATUS_UNKNOWN
+    elif goal_status_code == 1: # ACTIVE
+        status = GoalStatus.STATUS_EXECUTING
+    elif goal_status_code == 2: # PREEMPTED
+        status = GoalStatus.STATUS_CANCELED
+    elif goal_status_code == 3: # SUCCEEDED
+        status = GoalStatus.STATUS_SUCCEEDED
+    elif goal_status_code == 4: # ABORTED
+        status = GoalStatus.STATUS_ABORTED
+    elif goal_status_code == 5: # REJECTED
+        status = GoalStatus.STATUS_CANCELED
+    elif goal_status_code == 6: # PREEMPTING
+        status = GoalStatus.STATUS_CANCELING
+    elif goal_status_code == 7: # RECALLING
+        status = GoalStatus.STATUS_CANCELING
+    elif goal_status_code == 8: # RECALLED
+        status = GoalStatus.STATUS_CANCELED
+    elif goal_status_code == 9: # LOST
+        status = GoalStatus.STATUS_UNKNOWN
+    else:
+        status = GoalStatus.STATUS_UNKNOWN
+
+    filtered_msg_dict['status_list'][0]['status'] = status
+    filtered_msg_dict['status_list'][0]['goal_info'] = OrderedDict()
+    filtered_msg_dict['status_list'][0]['goal_info']['goal_id'] = OrderedDict()
+    filtered_msg_dict['status_list'][0]['goal_info']['goal_id']['uuid'] = list(bytes.fromhex(goal_id))
+    filtered_msg_dict['status_list'][0]['goal_info']['stamp'] = stamp
+    
+    return filtered_msg_dict
+
+
+def _navigate_to_pose_result_dict_filter(msg_dict: dict) -> OrderedDict:
+    filtered_msg_dict = OrderedDict()
+    if msg_dict['status']['status'] == 3: # SUCCEEDED
+        filtered_msg_dict['error_code'] = 0
+        filtered_msg_dict['error_message'] = ''
+    else:
+        filtered_msg_dict['error_code'] = 1
+        filtered_msg_dict['error_message'] = msg_dict['status']['text']
+    return filtered_msg_dict
+
+
 # topics we want to publish to ROS (and subscribe to from the MiR)
 PUB_TOPICS = [
     # TopicConfig('LightCtrl/bms_data', mir_msgs.msg.BMSData),
@@ -167,7 +272,7 @@ PUB_TOPICS = [
     # TopicConfig('active_mapping_guid', std_msgs.msg.String),
     # TopicConfig('amcl_pose', geometry_msgs.msg.PoseWithCovarianceStamped),
     # TopicConfig('b_raw_scan', sensor_msgs.msg.LaserScan),
-    TopicConfig('b_scan', LaserScan, dict_filter=_laser_scan_filter,
+    TopicConfig('b_scan', sensor_msgs.msg.LaserScan, dict_filter=_laser_scan_filter,
                 qos_profile=qos_profile_sensor_data),
     # TopicConfig('camera_floor/background', sensor_msgs.msg.PointCloud2),
     # TopicConfig('camera_floor/depth/parameter_descriptions',
@@ -188,7 +293,7 @@ PUB_TOPICS = [
     # TopicConfig('diagnostics_agg', diagnostic_msgs.msg.DiagnosticArray),
     # TopicConfig('diagnostics_toplevel_state', diagnostic_msgs.msg.DiagnosticStatus),
     # TopicConfig('f_raw_scan', sensor_msgs.msg.LaserScan),
-    TopicConfig('f_scan', LaserScan, dict_filter=_laser_scan_filter,
+    TopicConfig('f_scan', sensor_msgs.msg.LaserScan, dict_filter=_laser_scan_filter,
                 qos_profile=qos_profile_sensor_data),
     # TopicConfig('imu_data', sensor_msgs.msg.Imu),
     # TopicConfig('laser_back/driver/parameter_descriptions',
@@ -316,9 +421,10 @@ PUB_TOPICS = [
     # TopicConfig('wifi_watchdog/ping', mir_wifi_msgs.msg.APPingStats),
 ]
 
+
 # topics we want to subscribe to from ROS (and publish to the MiR)
 SUB_TOPICS = [
-    TopicConfig('cmd_vel', TwistStamped, 'cmd_vel_stamped')
+    TopicConfig('cmd_vel', TwistStamped, 'cmd_vel_stamped'),
     # TopicConfig('initialpose', geometry_msgs.msg.PoseWithCovarianceStamped),
     # TopicConfig('light_cmd', std_msgs.msg.String),
     # TopicConfig('mir_cmd', std_msgs.msg.String),
@@ -329,8 +435,24 @@ SUB_TOPICS = [
 ]
 
 
+ACTIONS = [
+    ActionConfig('move_base', NavigateToPose, 'nav2/navigate_to_pose',
+        goal_dict_filter=_navigate_to_pose_goal_dict_filter,
+        feedback_dict_filter=_navigate_to_pose_feedback_dict_filter,
+        status_dict_filter=_navigate_to_pose_status_dict_filter,
+        result_dict_filter=_navigate_to_pose_result_dict_filter),
+    # TopicConfig('move_base/cancel', actionlib_msgs.msg.GoalID),
+    # TopicConfig('move_base/feedback', move_base_msgs.msg.MoveBaseActionFeedback,
+    #   dict_filter=_move_base_feedback_dict_filter),
+    # really mir_actions/MirMoveBaseActionResult:
+    # TopicConfig('move_base/result', move_base_msgs.msg.MoveBaseActionResult,
+    #   dict_filter=_move_base_result_dict_filter),
+    # TopicConfig('move_base/status', actionlib_msgs.msg.GoalStatusArray),
+]
+
+
 class PublisherWrapper(object):
-    def __init__(self, topic_config, nh):
+    def __init__(self, topic_config: TopicConfig, nh: Node) -> None:
         self.topic_config = topic_config
         self.robot = nh.robot
         self.connected = False
@@ -352,7 +474,7 @@ class PublisherWrapper(object):
         # if topic_config.latch:
         self.peer_subscribe(None, None, None, nh)
 
-    def peer_subscribe(self, topic_name, topic_publish, peer_publish, nh):
+    def peer_subscribe(self, topic_name: str | None, topic_publish: Any, peer_publish: Any, nh: Node) -> None:
         if not self.connected:
             self.connected = True
             nh.get_logger().info("Starting to stream messages on topic '%s'" %
@@ -360,7 +482,7 @@ class PublisherWrapper(object):
             self.robot.subscribe(
                 topic=('/' + self.topic_config.topic), callback=self.callback)
 
-    def callback(self, msg_dict):
+    def callback(self, msg_dict: dict) -> None:
         if not isinstance(msg_dict, dict):   # can happen during recursion
             return
         msg_dict = _prepend_tf_prefix_dict_filter(msg_dict)
@@ -372,7 +494,7 @@ class PublisherWrapper(object):
 
 
 class SubscriberWrapper(object):
-    def __init__(self, topic_config, nh):
+    def __init__(self, topic_config: TopicConfig, nh: Node) -> None:
         self.topic_config = topic_config
         self.robot = nh.robot
         self.sub = nh.create_subscription(
@@ -385,7 +507,7 @@ class SubscriberWrapper(object):
         nh.get_logger().info("Subscribing to topic '%s' [%s]" % (
             topic_config.topic, topic_config.topic_type.__module__))
 
-    def callback(self, msg):
+    def callback(self, msg: Any) -> None:
         if msg is None:
             return
 
@@ -397,8 +519,144 @@ class SubscriberWrapper(object):
         self.robot.publish('/' + self.topic_config.topic, msg_dict)
 
 
+class ActionWrapper(object):
+    def __init__(self, action_config: ActionConfig, nh: Node) -> None:
+        self.action_config = action_config
+        self.robot = nh.robot
+        self.server = ActionServer(
+            nh,
+            action_type=action_config.action_type,
+            action_name=action_config.action_topic,
+            execute_callback=self.execute_callback,
+            cancel_callback=self.cancel_callback,
+        )
+
+        nh.get_logger().info(f"Creating action server at '{action_config.action_topic}' [{action_config.action_type.__module__}]")
+
+        # Subscribe to result/status/feedback topics of MiR base
+        self.robot.subscribe(topic=('/' + self.action_config.mir_action_topic + '/result'), callback=self.result_callback)
+        self.robot.subscribe(topic=('/' + self.action_config.mir_action_topic + '/status'), callback=self.status_callback)
+        self.robot.subscribe(topic=('/' + self.action_config.mir_action_topic + '/feedback'), callback=self.feedback_callback)
+
+        # Create publisher for status of MiR base
+        self.status_pub = nh.create_publisher(
+            msg_type=GoalStatusArray,
+            topic=action_config.action_topic + '/status',
+            qos_profile=action_config.qos_profile
+        )
+
+        self._lock = threading.Lock()
+        self.goal_events = {}
+        self.goal_results = {}
+        self.goal_handles = {}
+
+    def execute_callback(self, goal_handle: ServerGoalHandle) -> NavigateToPose.Result:
+        goal_id_str = bytearray(goal_handle.goal_id.uuid).hex()
+        event = threading.Event()
+        with self._lock:
+            self.goal_events[goal_id_str] = event
+            self.goal_handles[goal_id_str] = goal_handle
+
+        msg_dict = message_converter.convert_ros_message_to_dictionary(goal_handle.request)
+        msg_dict = _remove_tf_prefix_dict_filter(msg_dict)
+
+        if self.action_config.goal_dict_filter is not None:
+            filtered_goal_msg = self.action_config.goal_dict_filter(msg_dict, goal_id_str)
+        
+        self.robot.publish('/' + self.action_config.mir_action_topic + '/goal', filtered_goal_msg)
+
+        while rclpy.ok() and not event.is_set():
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+                self._cleanup_goal(goal_id_str)
+                return NavigateToPose.Result()
+            event.wait()  # Wait for the event
+
+        result = NavigateToPose.Result()
+
+        with self._lock:
+            result_dict = self.goal_results.get(goal_id_str, {})
+
+        if self.action_config.result_dict_filter is not None:
+            result_dict = self.action_config.result_dict_filter(result_dict)
+
+        result = message_converter.convert_dictionary_to_ros_message(
+                self.action_config.action_type.Result, result_dict)
+
+        if event.is_set():
+            goal_handle.succeed()
+        else:
+            goal_handle.abort()
+
+        self._cleanup_goal(goal_id_str)
+        return result
+        
+
+    def cancel_callback(self, goal_handle: ServerGoalHandle) -> CancelResponse:
+        goal_id_str = bytearray(goal_handle.goal_id.uuid).hex()
+
+        cancel_msg_dict = {'id': goal_id_str, 'stamp': {'secs': 0, 'nsecs': 0}}
+        self.robot.publish('/' + self.action_config.mir_action_topic + '/cancel', cancel_msg_dict)
+
+        return CancelResponse.ACCEPT
+
+    def result_callback(self, msg_dict: dict) -> None:
+        if not isinstance(msg_dict, dict):
+            return
+
+        try:
+            goal_id_str = msg_dict['status']['goal_id']['id']
+        except KeyError:
+            return
+
+        with self._lock:
+            event = self.goal_events.get(goal_id_str)
+            if event:
+                self.goal_results[goal_id_str] = msg_dict
+                event.set()
+
+    def feedback_callback(self, msg_dict: dict) -> None:
+        if not isinstance(msg_dict, dict):
+            return
+        try:
+            goal_id_str = msg_dict['status']['goal_id']['id']
+        except KeyError:
+            return
+
+        with self._lock:
+            goal_handle = self.goal_handles.get(goal_id_str)
+
+        if goal_handle and goal_handle.is_active:
+            msg_dict = _prepend_tf_prefix_dict_filter(msg_dict)
+            if self.action_config.feedback_dict_filter is not None:
+                feedback_filtered = self.action_config.feedback_dict_filter(msg_dict)
+                feedback_msg = message_converter.convert_dictionary_to_ros_message(
+                    self.action_config.action_type.Feedback, feedback_filtered)
+                goal_handle.publish_feedback(feedback_msg)
+
+    def status_callback(self, msg_dict: dict) -> None:
+        if not isinstance(msg_dict, dict):
+            return
+    
+        msg_dict = _prepend_tf_prefix_dict_filter(msg_dict)
+        
+        if self.action_config.status_dict_filter is not None:
+            msg_dict = self.action_config.status_dict_filter(msg_dict)
+        
+        msg = message_converter.convert_dictionary_to_ros_message(
+            GoalStatusArray, msg_dict)
+
+        self.status_pub.publish(msg)
+
+    def _cleanup_goal(self, goal_id_str: str) -> None:
+        with self._lock:
+            self.goal_events.pop(goal_id_str, None)
+            self.goal_results.pop(goal_id_str, None)
+            self.goal_handles.pop(goal_id_str, None)
+
+
 class MiR100BridgeNode(Node):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__('mir_bridge')
 
         self.mir_bridge_ready = False  # state
@@ -454,10 +712,17 @@ class MiR100BridgeNode(Node):
             if ('/' + sub_topic.topic) not in subscribed_topics:
                 self.get_logger().warn(
                     "Topic '%s' is not yet subscribed to by the MiR!" % sub_topic.topic)
+                
+        for action in ACTIONS:
+            ActionWrapper(action, self)
+            if ('/' + action.mir_action_topic + '/goal') not in subscribed_topics:
+                self.get_logger().warn(
+                    f"Action {'/' + action.mir_action_topic + '/goal'} is not yet subscribed to by the MiR"
+                )
 
         self.mir_bridge_ready = True
 
-    def get_topics(self):
+    def get_topics(self) -> list:
         srv_response = self.robot.callService('/rosapi/topics', msg={})
         topic_names = sorted(srv_response['topics'])
         topics = []
@@ -492,17 +757,20 @@ class MiR100BridgeNode(Node):
 
         return topics
 
-    def mir_bridge_ready_poll_callback(self, request, response):
+    def mir_bridge_ready_poll_callback(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
         self.get_logger().info('Checked for readiness')
         response.success = self.mir_bridge_ready
         response.message = ""
         return response
 
 
-def main(args=None):
+from rclpy.executors import MultiThreadedExecutor
+
+def main(args: list | None = None) -> None:
     rclpy.init(args=args)
     node = MiR100BridgeNode()
-    rclpy.spin(node)
+    executor = MultiThreadedExecutor()
+    rclpy.spin(node, executor=executor)
     rclpy.shutdown()
 
 

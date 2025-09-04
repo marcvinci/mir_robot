@@ -38,9 +38,11 @@ def generate_launch_description():
 
         DeclareLaunchArgument(
             'robot_state_publisher_enabled',
-            default_value='true',
+            default_value='false',
             description='Set to true to publish tf using mir_description'),
 
+        # This launches a robot state publisher and a joint state publisher
+        # the robot description is loaded from mir_description package using the mir.urdf.xacro file
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(mir_description_dir, 'launch', 'mir_launch.py')),
@@ -63,7 +65,8 @@ def generate_launch_description():
         Node(
             package='mir_driver',
             executable='fake_mir_joint_publisher',
-            remappings=[('use_sim_time', LaunchConfiguration('use_sim_time'))],
+            remappings=[('use_sim_time', LaunchConfiguration('use_sim_time')),
+                        ('joint_states', 'mir_joint_states')],
             parameters=[{'tf_prefix': LaunchConfiguration('namespace')}],
             namespace=LaunchConfiguration('namespace'),
             output='screen'),
