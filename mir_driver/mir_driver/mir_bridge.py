@@ -5,7 +5,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionServer, GoalResponse, CancelResponse
 from rclpy.action.server import ServerGoalHandle
-from rclpy.qos import qos_profile_system_default, qos_profile_sensor_data
+from rclpy.qos import qos_profile_system_default, qos_profile_sensor_data, QoSDurabilityPolicy
 
 import time
 import copy
@@ -18,7 +18,7 @@ from typing import Any
 import mir_driver.rosbridge
 from rclpy_message_converter import message_converter
 from geometry_msgs.msg import TwistStamped
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, OccupancyGrid, MapMetaData
 from nav2_msgs.action import NavigateToPose
 import sensor_msgs.msg
 from tf2_msgs.msg import TFMessage
@@ -44,6 +44,8 @@ class TopicConfig(object):
             self.qos_profile = qos_profile
         else:
             self.qos_profile = qos_profile_system_default
+        if latch:
+            self.qos_profile.durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
 
 
 class ActionConfig(object):
@@ -97,8 +99,14 @@ def _map_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
     filtered_msg_dict = copy.deepcopy(msg_dict)
     filtered_msg_dict['header'] = _convert_ros_header(
         filtered_msg_dict['header'], to_ros2)
-    filtered_msg_dict['info']['map_load_time'] = _convert_ros_time(
-        filtered_msg_dict['info']['map_load_time'], to_ros2)
+    filtered_msg_dict['info'] = _map_meta_data_dict_filter(filtered_msg_dict['info'], to_ros2)
+    return filtered_msg_dict
+
+
+def _map_meta_data_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
+    filtered_msg_dict = copy.deepcopy(msg_dict)
+    filtered_msg_dict['map_load_time'] = _convert_ros_time(
+        filtered_msg_dict['map_load_time'], to_ros2)
     return filtered_msg_dict
 
 
@@ -270,7 +278,8 @@ PUB_TOPICS = [
     # TopicConfig('SickPLC/parameter_updates', dynamic_reconfigure.msg.Config),
     # TopicConfig('active_mapping_guid', std_msgs.msg.String),
     # TopicConfig('amcl_pose', geometry_msgs.msg.PoseWithCovarianceStamped),
-    # TopicConfig('b_raw_scan', sensor_msgs.msg.LaserScan),
+    TopicConfig('b_raw_scan', sensor_msgs.msg.LaserScan, dict_filter=_laser_scan_filter,
+                qos_profile=qos_profile_sensor_data),
     TopicConfig('b_scan', sensor_msgs.msg.LaserScan, dict_filter=_laser_scan_filter,
                 qos_profile=qos_profile_sensor_data),
     # TopicConfig('camera_floor/background', sensor_msgs.msg.PointCloud2),
@@ -291,7 +300,8 @@ PUB_TOPICS = [
     # TopicConfig('diagnostics', diagnostic_msgs.msg.DiagnosticArray),
     # TopicConfig('diagnostics_agg', diagnostic_msgs.msg.DiagnosticArray),
     # TopicConfig('diagnostics_toplevel_state', diagnostic_msgs.msg.DiagnosticStatus),
-    # TopicConfig('f_raw_scan', sensor_msgs.msg.LaserScan),
+    TopicConfig('f_raw_scan', sensor_msgs.msg.LaserScan, dict_filter=_laser_scan_filter,
+                qos_profile=qos_profile_sensor_data),
     TopicConfig('f_scan', sensor_msgs.msg.LaserScan, dict_filter=_laser_scan_filter,
                 qos_profile=qos_profile_sensor_data),
     # TopicConfig('imu_data', sensor_msgs.msg.Imu),
@@ -302,8 +312,8 @@ PUB_TOPICS = [
     #   dynamic_reconfigure.msg.ConfigDescription),
     # TopicConfig('laser_front/driver/parameter_updates', dynamic_reconfigure.msg.Config),
     # TopicConfig('localization_score', std_msgs.msg.Float64),
-    # TopicConfig('/map', nav_msgs.msg.OccupancyGrid, latch=True),
-    # TopicConfig('/map_metadata', nav_msgs.msg.MapMetaData),
+    TopicConfig('map', OccupancyGrid, latch=True, dict_filter=_map_dict_filter),
+    TopicConfig('map_metadata', MapMetaData, dict_filter=_map_meta_data_dict_filter),
     # TopicConfig('marker_tracking_node/feedback',
     #   mir_marker_tracking.msg.MarkerTrackingActionFeedback),
     # TopicConfig('marker_tracking_node/laser_line_extract/parameter_descriptions',
