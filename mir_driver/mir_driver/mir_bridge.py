@@ -246,10 +246,10 @@ def _navigate_to_pose_result_dict_filter(msg_dict: dict) -> OrderedDict:
     filtered_msg_dict = OrderedDict()
     if msg_dict['status']['status'] == 3: # SUCCEEDED
         filtered_msg_dict['error_code'] = 0
-        filtered_msg_dict['error_message'] = ''
+        filtered_msg_dict['error_msg'] = ''
     else:
         filtered_msg_dict['error_code'] = 1
-        filtered_msg_dict['error_message'] = msg_dict['status']['text']
+        filtered_msg_dict['error_msg'] = msg_dict['status']['text']
     return filtered_msg_dict
 
 
