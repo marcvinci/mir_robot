@@ -23,7 +23,7 @@ from nav2_msgs.action import NavigateToPose
 import sensor_msgs.msg
 from tf2_msgs.msg import TFMessage
 from std_srvs.srv import Trigger
-from mir_msgs.action import MirMoveBase
+from mir_actions.action import MirMoveBase
 from action_msgs.msg import GoalStatusArray, GoalStatus
 
 tf_prefix = ''
