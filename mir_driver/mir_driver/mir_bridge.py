@@ -99,7 +99,6 @@ def _map_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
         filtered_msg_dict['header'], to_ros2)
     filtered_msg_dict['info']['map_load_time'] = _convert_ros_time(
         filtered_msg_dict['info']['map_load_time'], to_ros2)
-    print('called dict filter')
     return filtered_msg_dict
 
 
@@ -745,15 +744,15 @@ class MiR100BridgeNode(Node):
             topics.append(
                 [topic_name, topic_type, has_publishers, has_subscribers])
 
-        print('Publishers:')
+        self.get_logger().info('Publishers:')
         for (topic_name, topic_type, has_publishers, has_subscribers) in topics:
             if has_publishers:
-                print((' * %s [%s]' % (topic_name, topic_type)))
+                self.get_logger().info((' * %s [%s]' % (topic_name, topic_type)))
 
-        print('\nSubscribers:')
+        self.get_logger().info('\nSubscribers:')
         for (topic_name, topic_type, has_publishers, has_subscribers) in topics:
             if has_subscribers:
-                print((' * %s [%s]' % (topic_name, topic_type)))
+                self.get_logger().info((' * %s [%s]' % (topic_name, topic_type)))
 
         return topics
 
@@ -762,6 +761,10 @@ class MiR100BridgeNode(Node):
         response.success = self.mir_bridge_ready
         response.message = ""
         return response
+    
+    def destroy_node(self) -> None:
+        self.robot.close()
+        super().destroy_node()
 
 
 from rclpy.executors import MultiThreadedExecutor
@@ -770,8 +773,12 @@ def main(args: list | None = None) -> None:
     rclpy.init(args=args)
     node = MiR100BridgeNode()
     executor = MultiThreadedExecutor()
-    rclpy.spin(node, executor=executor)
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node, executor=executor)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
 
 
 if __name__ == '__main__':

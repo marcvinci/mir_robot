@@ -99,6 +99,9 @@ class RosbridgeSetup():
 
     def is_errored(self):
         return self.connection.errored
+    
+    def close(self):
+        self.connection.close()
 
     def onMessageReceived(self, message):
         try:
@@ -157,6 +160,7 @@ class RosbridgeWSConnection():
         self.connected = False
         self.errored = False
         self.callbacks = []
+        self.closing = False
 
     def on_open(self, ws):
         print("### ROS bridge connected ###")
@@ -173,14 +177,20 @@ class RosbridgeWSConnection():
         self.errored = True
         print("Error: %s" % error)
 
-    def on_close(self, ws):
+    def on_close(self, ws, close_status_code, close_msg):
         self.connected = False
         print("### ROS bridge closed ###")
 
     def run(self, *args):
         self.ws.run_forever()
 
+    def close(self):
+        self.closing = True
+        self.ws.close()
+
     def on_message(self, ws, message):
+        if self.closing:
+            return
         # Call the handlers
         for callback in self.callbacks:
             callback(message)
