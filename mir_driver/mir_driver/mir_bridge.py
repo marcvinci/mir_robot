@@ -18,7 +18,7 @@ from typing import Any
 import mir_driver.rosbridge
 from rclpy_message_converter import message_converter
 from geometry_msgs.msg import TwistStamped
-from nav_msgs.msg import Odometry, OccupancyGrid, MapMetaData
+import nav_msgs.msg
 from nav2_msgs.action import NavigateToPose
 import sensor_msgs.msg
 from tf2_msgs.msg import TFMessage
@@ -88,13 +88,6 @@ def _tf_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
     return filtered_msg_dict
 
 
-def _laser_scan_filter(msg_dict: dict, to_ros2: bool) -> dict:
-    filtered_msg_dict = copy.deepcopy(msg_dict)
-    filtered_msg_dict['header'] = _convert_ros_header(
-        filtered_msg_dict['header'], to_ros2)
-    return filtered_msg_dict
-
-
 def _map_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
     filtered_msg_dict = copy.deepcopy(msg_dict)
     filtered_msg_dict['header'] = _convert_ros_header(
@@ -124,7 +117,33 @@ def _convert_ros_time(time_msg_dict: dict, to_ros2: bool) -> dict:
     return time_dict
 
 
-def _convert_ros_header(header_msg_dict: dict, to_ros2: bool) -> dict:
+def _convert_ros_header_recursive(header_msg_dict: dict, to_ros2: bool) -> dict:
+    if not isinstance(header_msg_dict, dict):
+        return header_msg_dict
+    filtered_msg_dict = copy.deepcopy(header_msg_dict)
+    for (key, value) in filtered_msg_dict.items():
+        if key == 'header':
+            try:
+                value['stamp'] = _convert_ros_time(value['stamp'], to_ros2)
+                if to_ros2:
+                    del value['seq']
+                    frame_id = value['frame_id'].strip('/')
+                    value['frame_id'] = tf_prefix + frame_id
+                else:
+                    value['seq'] = 0
+            except (TypeError, KeyError):
+                pass   # value is not a dict or doesn't have key 'frame_id' or 'stamp'
+        elif isinstance(value, dict):
+            filtered_msg_dict[key] = _convert_ros_header_recursive(value, to_ros2)
+        elif isinstance(value, list):
+            new_list = []
+            for item in value:
+                new_list.append(_convert_ros_header_recursive(item, to_ros2))
+            filtered_msg_dict[key] = new_list
+    return filtered_msg_dict
+
+
+def _convert_ros_header(header_msg_dict, to_ros2):
     header_dict = copy.deepcopy(header_msg_dict)
     header_dict['stamp'] = _convert_ros_time(header_dict['stamp'], to_ros2)
     if to_ros2:
@@ -278,9 +297,9 @@ PUB_TOPICS = [
     # TopicConfig('SickPLC/parameter_updates', dynamic_reconfigure.msg.Config),
     # TopicConfig('active_mapping_guid', std_msgs.msg.String),
     # TopicConfig('amcl_pose', geometry_msgs.msg.PoseWithCovarianceStamped),
-    TopicConfig('b_raw_scan', sensor_msgs.msg.LaserScan, dict_filter=_laser_scan_filter,
+    TopicConfig('b_raw_scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
                 qos_profile=qos_profile_sensor_data),
-    TopicConfig('b_scan', sensor_msgs.msg.LaserScan, dict_filter=_laser_scan_filter,
+    TopicConfig('b_scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
                 qos_profile=qos_profile_sensor_data),
     # TopicConfig('camera_floor/background', sensor_msgs.msg.PointCloud2),
     # TopicConfig('camera_floor/depth/parameter_descriptions',
@@ -300,9 +319,9 @@ PUB_TOPICS = [
     # TopicConfig('diagnostics', diagnostic_msgs.msg.DiagnosticArray),
     # TopicConfig('diagnostics_agg', diagnostic_msgs.msg.DiagnosticArray),
     # TopicConfig('diagnostics_toplevel_state', diagnostic_msgs.msg.DiagnosticStatus),
-    TopicConfig('f_raw_scan', sensor_msgs.msg.LaserScan, dict_filter=_laser_scan_filter,
+    TopicConfig('f_raw_scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
                 qos_profile=qos_profile_sensor_data),
-    TopicConfig('f_scan', sensor_msgs.msg.LaserScan, dict_filter=_laser_scan_filter,
+    TopicConfig('f_scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
                 qos_profile=qos_profile_sensor_data),
     # TopicConfig('imu_data', sensor_msgs.msg.Imu),
     # TopicConfig('laser_back/driver/parameter_descriptions',
@@ -312,8 +331,8 @@ PUB_TOPICS = [
     #   dynamic_reconfigure.msg.ConfigDescription),
     # TopicConfig('laser_front/driver/parameter_updates', dynamic_reconfigure.msg.Config),
     # TopicConfig('localization_score', std_msgs.msg.Float64),
-    TopicConfig('map', OccupancyGrid, latch=True, dict_filter=_map_dict_filter),
-    TopicConfig('map_metadata', MapMetaData, dict_filter=_map_meta_data_dict_filter),
+    TopicConfig('map', nav_msgs.msg.OccupancyGrid, latch=True, dict_filter=_map_dict_filter),
+    TopicConfig('map_metadata', nav_msgs.msg.MapMetaData, dict_filter=_map_meta_data_dict_filter),
     # TopicConfig('marker_tracking_node/feedback',
     #   mir_marker_tracking.msg.MarkerTrackingActionFeedback),
     # TopicConfig('marker_tracking_node/laser_line_extract/parameter_descriptions',
@@ -344,7 +363,7 @@ PUB_TOPICS = [
     #   dict_filter=_move_base_result_dict_filter),
     # TopicConfig('move_base/status', actionlib_msgs.msg.GoalStatusArray),
     # TopicConfig('move_base_node/MIRPlannerROS/cost_cloud', sensor_msgs.msg.PointCloud2),
-    # TopicConfig('move_base_node/MIRPlannerROS/global_plan', nav_msgs.msg.Path),
+    TopicConfig('move_base_node/MIRPlannerROS/global_plan', nav_msgs.msg.Path, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('move_base_node/MIRPlannerROS/len_to_goal', std_msgs.msg.Float64),
     # TopicConfig('move_base_node/MIRPlannerROS/local_plan', nav_msgs.msg.Path),
     # TopicConfig('move_base_node/MIRPlannerROS/parameter_descriptions',
@@ -397,7 +416,7 @@ PUB_TOPICS = [
     # TopicConfig('move_base_node/traffic_costmap/unknown_space', nav_msgs.msg.GridCells),
     # TopicConfig('move_base_node/visualization_marker', visualization_msgs.msg.Marker),
     # TopicConfig('move_base_simple/visualization_marker', visualization_msgs.msg.Marker),
-    TopicConfig('odom', Odometry, dict_filter=_odom_dict_filter),
+    TopicConfig('odom', nav_msgs.msg.Odometry, dict_filter=_odom_dict_filter),
     # TopicConfig('odom_enc', nav_msgs.msg.Odometry),
     # TopicConfig('one_way_map', nav_msgs.msg.OccupancyGrid),
     # TopicConfig('param_update', std_msgs.msg.String),
