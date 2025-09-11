@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import rclpy
 from rclpy.node import Node
-from rclpy.action import ActionServer, GoalResponse, CancelResponse
+from rclpy.action import ActionServer, CancelResponse
 from rclpy.action.server import ServerGoalHandle
 from rclpy.qos import qos_profile_system_default, qos_profile_sensor_data, QoSDurabilityPolicy
 
@@ -17,13 +17,16 @@ from typing import Any
 
 import mir_driver.rosbridge
 from rclpy_message_converter import message_converter
-from geometry_msgs.msg import TwistStamped
-import nav_msgs.msg
+
 from nav2_msgs.action import NavigateToPose
-import sensor_msgs.msg
 from tf2_msgs.msg import TFMessage
 from std_srvs.srv import Trigger
 from mir_actions.action import MirMoveBase
+import geometry_msgs.msg
+import nav_msgs.msg
+import sensor_msgs.msg
+import mir_msgs.msg
+import visualization_msgs.msg
 from action_msgs.msg import GoalStatusArray, GoalStatus
 
 tf_prefix = ''
@@ -102,6 +105,12 @@ def _map_meta_data_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
         filtered_msg_dict['map_load_time'], to_ros2)
     return filtered_msg_dict
 
+
+def _marker_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
+    filtered_msg_dict = copy.deepcopy(msg_dict)
+    filtered_msg_dict['header'] = _convert_ros_header(filtered_msg_dict['header'], to_ros2)
+    filtered_msg_dict['lifetime'] = _convert_ros_time(filtered_msg_dict['lifetime'], to_ros2)
+    return filtered_msg_dict
 
 def _convert_ros_time(time_msg_dict: dict, to_ros2: bool) -> dict:
     time_dict = copy.deepcopy(time_msg_dict)
@@ -365,20 +374,20 @@ PUB_TOPICS = [
     # TopicConfig('move_base_node/MIRPlannerROS/cost_cloud', sensor_msgs.msg.PointCloud2),
     TopicConfig('move_base_node/MIRPlannerROS/global_plan', nav_msgs.msg.Path, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('move_base_node/MIRPlannerROS/len_to_goal', std_msgs.msg.Float64),
-    # TopicConfig('move_base_node/MIRPlannerROS/local_plan', nav_msgs.msg.Path),
+    TopicConfig('move_base_node/MIRPlannerROS/local_plan', nav_msgs.msg.Path, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('move_base_node/MIRPlannerROS/parameter_descriptions',
     #   dynamic_reconfigure.msg.ConfigDescription),
     # TopicConfig('move_base_node/MIRPlannerROS/parameter_updates',
     #   dynamic_reconfigure.msg.Config),
-    # TopicConfig('move_base_node/MIRPlannerROS/updated_global_plan', mir_msgs.msg.PlanSegments),
+    TopicConfig('move_base_node/MIRPlannerROS/updated_global_plan', mir_msgs.msg.PlanSegments, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('move_base_node/MIRPlannerROS/visualization_marker',
     #   visualization_msgs.msg.MarkerArray),
-    # TopicConfig('move_base_node/SBPLLatticePlanner/plan', nav_msgs.msg.Path),
+    TopicConfig('move_base_node/SBPLLatticePlanner/plan', nav_msgs.msg.Path, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('move_base_node/SBPLLatticePlanner/sbpl_lattice_planner_stats',
     #   sbpl_lattice_planner.msg.SBPLLatticePlannerStats),
     # TopicConfig('move_base_node/SBPLLatticePlanner/visualization_marker',
     #   visualization_msgs.msg.MarkerArray),
-    # TopicConfig('move_base_node/current_goal', geometry_msgs.msg.PoseStamped),
+    TopicConfig('move_base_node/current_goal', geometry_msgs.msg.PoseStamped, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('move_base_node/global_costmap/inflated_obstacles', nav_msgs.msg.GridCells),
     # TopicConfig('move_base_node/global_costmap/obstacles', nav_msgs.msg.GridCells),
     # TopicConfig('move_base_node/global_costmap/parameter_descriptions',
@@ -389,14 +398,13 @@ PUB_TOPICS = [
     #   geometry_msgs.msg.PolygonStamped),
     # TopicConfig('move_base_node/global_costmap/unknown_space', nav_msgs.msg.GridCells),
     # TopicConfig('move_base_node/global_plan', nav_msgs.msg.Path),
-    # TopicConfig('move_base_node/local_costmap/inflated_obstacles', nav_msgs.msg.GridCells),
-    # TopicConfig('move_base_node/local_costmap/obstacles', nav_msgs.msg.GridCells),
+    TopicConfig('move_base_node/local_costmap/inflated_obstacles', nav_msgs.msg.GridCells, dict_filter=_convert_ros_header_recursive),
+    TopicConfig('move_base_node/local_costmap/obstacles', nav_msgs.msg.GridCells, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('move_base_node/local_costmap/parameter_descriptions',
     #   dynamic_reconfigure.msg.ConfigDescription),
     # TopicConfig('move_base_node/local_costmap/parameter_updates',
     #   dynamic_reconfigure.msg.Config),
-    # TopicConfig('move_base_node/local_costmap/robot_footprint',
-    #    geometry_msgs.msg.PolygonStamped),
+    TopicConfig('move_base_node/local_costmap/robot_footprint', geometry_msgs.msg.PolygonStamped, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('move_base_node/local_costmap/safety_zone', geometry_msgs.msg.PolygonStamped),
     # TopicConfig('move_base_node/local_costmap/unknown_space', nav_msgs.msg.GridCells),
     # TopicConfig('move_base_node/mir_escape_recovery/visualization_marker',
@@ -414,8 +422,8 @@ PUB_TOPICS = [
     # TopicConfig('move_base_node/traffic_costmap/robot_footprint',
     #   geometry_msgs.msg.PolygonStamped),
     # TopicConfig('move_base_node/traffic_costmap/unknown_space', nav_msgs.msg.GridCells),
-    # TopicConfig('move_base_node/visualization_marker', visualization_msgs.msg.Marker),
-    # TopicConfig('move_base_simple/visualization_marker', visualization_msgs.msg.Marker),
+    TopicConfig('move_base_node/visualization_marker', visualization_msgs.msg.Marker, dict_filter=_marker_dict_filter),
+    TopicConfig('move_base_simple/visualization_marker', visualization_msgs.msg.Marker, dict_filter=_marker_dict_filter),
     TopicConfig('odom', nav_msgs.msg.Odometry, dict_filter=_odom_dict_filter),
     # TopicConfig('odom_enc', nav_msgs.msg.Odometry),
     # TopicConfig('one_way_map', nav_msgs.msg.OccupancyGrid),
@@ -452,7 +460,7 @@ PUB_TOPICS = [
 
 # topics we want to subscribe to from ROS (and publish to the MiR)
 SUB_TOPICS = [
-    TopicConfig('cmd_vel', TwistStamped, 'cmd_vel_stamped'),
+    TopicConfig('cmd_vel', geometry_msgs.msg.TwistStamped, 'cmd_vel_stamped'),
     # TopicConfig('initialpose', geometry_msgs.msg.PoseWithCovarianceStamped),
     # TopicConfig('light_cmd', std_msgs.msg.String),
     # TopicConfig('mir_cmd', std_msgs.msg.String),
@@ -484,12 +492,7 @@ class PublisherWrapper(object):
         self.topic_config = topic_config
         self.robot = nh.robot
         self.connected = False
-        self.sub = nh.create_subscription(
-            msg_type=topic_config.topic_type,
-            topic=topic_config.topic,
-            callback=self.callback,
-            qos_profile=topic_config.qos_profile
-        )
+
         self.pub = nh.create_publisher(
             msg_type=topic_config.topic_type,
             topic=topic_config.topic_ros2_name,
@@ -500,9 +503,9 @@ class PublisherWrapper(object):
                              (topic_config.topic_ros2_name, topic_config.topic_type.__module__))
         # latched topics must be subscribed immediately
         # if topic_config.latch:
-        self.peer_subscribe(None, None, None, nh)
+        self.peer_subscribe(nh)
 
-    def peer_subscribe(self, topic_name: str | None, topic_publish: Any, peer_publish: Any, nh: Node) -> None:
+    def peer_subscribe(self, nh: Node) -> None:
         if not self.connected:
             self.connected = True
             nh.get_logger().info("Starting to stream messages on topic '%s'" %
