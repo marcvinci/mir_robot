@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>sdc21x0</name>
+  <version>1.1.8</version>
+  <description>Message definitions for the sdc21x0 motor controller</description>
+
+  <maintainer email="martin.guenther@dfki.de">Martin Günther</maintainer>
+  <author email="martin.guenther@dfki.de">Martin Günther</author>
+
+  <license>BSD</license>
+
+  <url type="website">https://github.com/DFKI-NI/mir_robot</url>
+  <url type="repository">https://github.com/DFKI-NI/mir_robot</url>
+  <url type="bugtracker">https://github.com/DFKI-NI/mir_robot/issues</url>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <build_depend>builtin_interfaces</build_depend>
+  <build_depend>rosidl_default_generators</build_depend>
+  <depend>std_msgs</depend>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>

@@ -27,6 +27,7 @@ import nav_msgs.msg
 import sensor_msgs.msg
 import mir_msgs.msg
 import visualization_msgs.msg
+import sdc21x0.msg
 from action_msgs.msg import GoalStatusArray, GoalStatus
 
 tf_prefix = ''
@@ -296,7 +297,7 @@ PUB_TOPICS = [
     TopicConfig('LightCtrl/us_list', sensor_msgs.msg.Range, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('MC/battery_currents', mir_msgs.msg.BatteryCurrents),
     # TopicConfig('MC/battery_voltage', std_msgs.msg.Float64),
-    # TopicConfig('MC/currents', sdc21x0.msg.MotorCurrents),
+    TopicConfig('MC/currents', sdc21x0.msg.MotorCurrents),
     # TopicConfig('MC/encoders', sdc21x0.msg.StampedEncoders),
     # TopicConfig('MissionController/CheckArea/visualization_marker',
     #   visualization_msgs.msg.Marker),
