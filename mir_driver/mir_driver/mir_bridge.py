@@ -28,6 +28,7 @@ import sensor_msgs.msg
 import mir_msgs.msg
 import visualization_msgs.msg
 import sdc21x0.msg
+import diagnostic_msgs.msg
 from action_msgs.msg import GoalStatusArray, GoalStatus
 
 tf_prefix = ''
@@ -112,6 +113,17 @@ def _marker_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
     filtered_msg_dict['header'] = _convert_ros_header(filtered_msg_dict['header'], to_ros2)
     filtered_msg_dict['lifetime'] = _convert_ros_time(filtered_msg_dict['lifetime'], to_ros2)
     return filtered_msg_dict
+
+
+def _convert_diagnostic_array(msg_dict: dict, to_ros2: bool) -> dict:
+    filtered_msg_dict = copy.deepcopy(msg_dict)
+    filtered_msg_dict['header'] = _convert_ros_header(filtered_msg_dict['header'], to_ros2)
+    for status in filtered_msg_dict['status']:
+        if status['level'] < 0:
+            status['level'] = 1
+    return filtered_msg_dict
+
+
 
 def _convert_ros_time(time_msg_dict: dict, to_ros2: bool) -> dict:
     time_dict = copy.deepcopy(time_msg_dict)
@@ -299,35 +311,35 @@ PUB_TOPICS = [
     # TopicConfig('MC/battery_voltage', std_msgs.msg.Float64),
     TopicConfig('MC/currents', sdc21x0.msg.MotorCurrents),
     # TopicConfig('MC/encoders', sdc21x0.msg.StampedEncoders),
-    # TopicConfig('MissionController/CheckArea/visualization_marker',
-    #   visualization_msgs.msg.Marker),
+    TopicConfig('MissionController/CheckArea/visualization_marker',
+      visualization_msgs.msg.Marker, dict_filter=_marker_dict_filter),
     # TopicConfig('MissionController/goal_position_guid', std_msgs.msg.String),
     # TopicConfig('MissionController/prompt_user', mir_msgs.msg.UserPrompt),
     # TopicConfig('SickPLC/parameter_descriptions', dynamic_reconfigure.msg.ConfigDescription),
     # TopicConfig('SickPLC/parameter_updates', dynamic_reconfigure.msg.Config),
     # TopicConfig('active_mapping_guid', std_msgs.msg.String),
-    # TopicConfig('amcl_pose', geometry_msgs.msg.PoseWithCovarianceStamped),
+    TopicConfig('amcl_pose', geometry_msgs.msg.PoseWithCovarianceStamped, dict_filter=_convert_ros_header_recursive),
     TopicConfig('b_raw_scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
                 qos_profile=qos_profile_sensor_data),
     TopicConfig('b_scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
                 qos_profile=qos_profile_sensor_data),
-    # TopicConfig('camera_floor/background', sensor_msgs.msg.PointCloud2),
+    TopicConfig('camera_floor/background', sensor_msgs.msg.PointCloud2, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('camera_floor/depth/parameter_descriptions',
     #   dynamic_reconfigure.msg.ConfigDescription),
     # TopicConfig('camera_floor/depth/parameter_updates', dynamic_reconfigure.msg.Config),
-    # TopicConfig('camera_floor/depth/points', sensor_msgs.msg.PointCloud2),
-    # TopicConfig('camera_floor/filter/visualization_marker', visualization_msgs.msg.Marker),
-    # TopicConfig('camera_floor/floor', sensor_msgs.msg.PointCloud2),
-    # TopicConfig('camera_floor/obstacles', sensor_msgs.msg.PointCloud2),
-    # TopicConfig('check_area/polygon', geometry_msgs.msg.PolygonStamped),
+    TopicConfig('camera_floor/depth/points', sensor_msgs.msg.PointCloud2, dict_filter=_convert_ros_header_recursive),
+    TopicConfig('camera_floor/filter/visualization_marker', visualization_msgs.msg.Marker, dict_filter=_marker_dict_filter),
+    TopicConfig('camera_floor/floor', sensor_msgs.msg.PointCloud2, dict_filter=_convert_ros_header_recursive),
+    TopicConfig('camera_floor/obstacles', sensor_msgs.msg.PointCloud2, dict_filter=_convert_ros_header_recursive),
+    TopicConfig('check_area/polygon', geometry_msgs.msg.PolygonStamped, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('check_pose_area/polygon', geometry_msgs.msg.PolygonStamped),
     # TopicConfig('data_events/area_events', mir_data_msgs.msg.AreaEventEvent),
     # TopicConfig('data_events/maps', mir_data_msgs.msg.MapEvent),
     # TopicConfig('data_events/positions', mir_data_msgs.msg.PositionEvent),
     # TopicConfig('data_events/registers', mir_data_msgs.msg.PLCRegisterEvent),
     # TopicConfig('data_events/sounds', mir_data_msgs.msg.SoundEvent),
-    # TopicConfig('diagnostics', diagnostic_msgs.msg.DiagnosticArray),
-    # TopicConfig('diagnostics_agg', diagnostic_msgs.msg.DiagnosticArray),
+    TopicConfig('diagnostics', diagnostic_msgs.msg.DiagnosticArray, dict_filter=_convert_diagnostic_array),
+    TopicConfig('diagnostics_agg', diagnostic_msgs.msg.DiagnosticArray, dict_filter=_convert_diagnostic_array),
     # TopicConfig('diagnostics_toplevel_state', diagnostic_msgs.msg.DiagnosticStatus),
     TopicConfig('f_raw_scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
                 qos_profile=qos_profile_sensor_data),
