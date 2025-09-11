@@ -293,7 +293,7 @@ def _navigate_to_pose_result_dict_filter(msg_dict: dict) -> OrderedDict:
 PUB_TOPICS = [
     # TopicConfig('LightCtrl/bms_data', mir_msgs.msg.BMSData),
     # TopicConfig('LightCtrl/charging_state', mir_msgs.msg.ChargingState),
-    # TopicConfig('LightCtrl/us_list', sensor_msgs.msg.Range),
+    TopicConfig('LightCtrl/us_list', sensor_msgs.msg.Range, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('MC/battery_currents', mir_msgs.msg.BatteryCurrents),
     # TopicConfig('MC/battery_voltage', std_msgs.msg.Float64),
     # TopicConfig('MC/currents', sdc21x0.msg.MotorCurrents),
