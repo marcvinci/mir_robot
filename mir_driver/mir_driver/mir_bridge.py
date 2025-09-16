@@ -115,12 +115,20 @@ def _marker_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
     return filtered_msg_dict
 
 
-def _convert_diagnostic_array(msg_dict: dict, to_ros2: bool) -> dict:
+def _convert_diagnostic_status(msg_dict: dict, to_ros2: bool) -> dict:
     filtered_msg_dict = copy.deepcopy(msg_dict)
-    filtered_msg_dict['header'] = _convert_ros_header(filtered_msg_dict['header'], to_ros2)
-    for status in filtered_msg_dict['status']:
-        if status['level'] < 0:
-            status['level'] = 1
+    # ultrasonic sensor level is set to -1 for not started,
+    # negative values are not possible with the level field of the ros2 diagnostic message, since it is an unsigned byte
+    # set it to 1 (WARN) instead
+    if filtered_msg_dict['level'] < 0: 
+        filtered_msg_dict['level'] = 1
+    return filtered_msg_dict
+
+
+def _convert_diagnostic_array(msg_dict: dict, to_ros2: bool) -> dict:
+    filtered_msg_dict = _convert_ros_header_recursive(msg_dict, to_ros2)
+    for i in range(len(filtered_msg_dict['status'])):
+        filtered_msg_dict['status'][i] = _convert_diagnostic_status(filtered_msg_dict['status'][i], to_ros2)
     return filtered_msg_dict
 
 
@@ -340,7 +348,7 @@ PUB_TOPICS = [
     # TopicConfig('data_events/sounds', mir_data_msgs.msg.SoundEvent),
     TopicConfig('diagnostics', diagnostic_msgs.msg.DiagnosticArray, dict_filter=_convert_diagnostic_array),
     TopicConfig('diagnostics_agg', diagnostic_msgs.msg.DiagnosticArray, dict_filter=_convert_diagnostic_array),
-    # TopicConfig('diagnostics_toplevel_state', diagnostic_msgs.msg.DiagnosticStatus),
+    TopicConfig('diagnostics_toplevel_state', diagnostic_msgs.msg.DiagnosticStatus, dict_filter=_convert_diagnostic_status),
     TopicConfig('f_raw_scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
                 qos_profile=qos_profile_sensor_data),
     TopicConfig('f_scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
