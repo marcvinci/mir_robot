@@ -20,9 +20,9 @@ import mir_driver.rosbridge
 from rclpy_message_converter import message_converter
 
 from nav2_msgs.action import NavigateToPose
-from tf2_msgs.msg import TFMessage
 from std_srvs.srv import Trigger
 from mir_actions.action import MirMoveBase
+import tf2_msgs.msg
 import geometry_msgs.msg
 import nav_msgs.msg
 import sensor_msgs.msg
@@ -30,6 +30,8 @@ import mir_msgs.msg
 import visualization_msgs.msg
 import sdc21x0.msg
 import diagnostic_msgs.msg
+import rcl_interfaces.msg
+import std_msgs.msg
 from action_msgs.msg import GoalStatusArray, GoalStatus
 
 tf_prefix = ''
@@ -132,6 +134,40 @@ def _convert_diagnostic_array(msg_dict: dict, to_ros2: bool) -> dict:
         filtered_msg_dict['status'][i] = _convert_diagnostic_status(filtered_msg_dict['status'][i], to_ros2)
     return filtered_msg_dict
 
+
+def _log_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
+    filtered_msg_dict = copy.deepcopy(msg_dict)
+
+    filtered_msg_dict['stamp'] = _convert_ros_time(msg_dict['header']['stamp'], to_ros2)
+    if msg_dict['level'] == 1:
+        filtered_msg_dict['level'] = rcl_interfaces.msg.Log.DEBUG
+    elif msg_dict['level'] == 2:
+        filtered_msg_dict['level'] = rcl_interfaces.msg.Log.INFO
+    elif msg_dict['level'] == 4:
+        filtered_msg_dict['level'] = rcl_interfaces.msg.Log.WARN
+    elif msg_dict['level'] == 8:
+        filtered_msg_dict['level'] = rcl_interfaces.msg.Log.ERROR
+    elif msg_dict['level'] == 16:
+        filtered_msg_dict['level'] = rcl_interfaces.msg.Log.FATAL
+    else:
+        filtered_msg_dict['level'] = rcl_interfaces.msg.Log.DEBUG
+    del filtered_msg_dict['topics']
+    del filtered_msg_dict['header']
+
+    return filtered_msg_dict
+
+def _robot_mode_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
+    filtered_msg_dict = OrderedDict()
+    filtered_msg_dict['robot_mode'] = msg_dict['robotMode']
+    filtered_msg_dict['robot_mode_string'] = msg_dict['robotModeString']
+    return filtered_msg_dict
+
+
+def _robot_state_dict_filter(msg_dict: dict, to_ros2: bool) -> dict:
+    filtered_msg_dict = OrderedDict()
+    filtered_msg_dict['robot_state'] = msg_dict['robotState']
+    filtered_msg_dict['robot_state_string'] = msg_dict['robotStateString']
+    return filtered_msg_dict
 
 
 def _convert_ros_time(time_msg_dict: dict, to_ros2: bool) -> dict:
@@ -354,7 +390,7 @@ PUB_TOPICS = [
                 qos_profile=qos_profile_sensor_data),
     TopicConfig('f_scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
                 qos_profile=qos_profile_sensor_data),
-    # TopicConfig('imu_data', sensor_msgs.msg.Imu),
+    TopicConfig('imu_data', sensor_msgs.msg.Imu, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('laser_back/driver/parameter_descriptions',
     #   dynamic_reconfigure.msg.ConfigDescription),
     # TopicConfig('laser_back/driver/parameter_updates', dynamic_reconfigure.msg.Config),
@@ -378,13 +414,13 @@ PUB_TOPICS = [
     # TopicConfig('mirEventTrigger/events', mir_msgs.msg.Events),
     # TopicConfig('mir_amcl/parameter_descriptions', dynamic_reconfigure.msg.ConfigDescription),
     # TopicConfig('mir_amcl/parameter_updates', dynamic_reconfigure.msg.Config),
-    # TopicConfig('mir_amcl/selected_points', sensor_msgs.msg.PointCloud2),
-    # TopicConfig('mir_log', rosgraph_msgs.msg.Log),
+    TopicConfig('mir_amcl/selected_points', sensor_msgs.msg.PointCloud2, dict_filter=_convert_ros_header_recursive),
+    TopicConfig('mir_log', rcl_interfaces.msg.Log, dict_filter=_log_dict_filter),
     # TopicConfig('mir_sound/sound_event', mir_msgs.msg.SoundEvent),
-    # TopicConfig('mir_status_msg', std_msgs.msg.String),
+    TopicConfig('mir_status_msg', std_msgs.msg.String),
     # TopicConfig('mirspawn/node_events', mirSpawn.msg.LaunchItem),
-    # TopicConfig('mirwebapp/grid_map_metadata', mir_msgs.msg.LocalMapStat),
-    # TopicConfig('mirwebapp/laser_map_metadata', mir_msgs.msg.LocalMapStat),
+    TopicConfig('mirwebapp/grid_map_metadata', mir_msgs.msg.LocalMapStat),
+    TopicConfig('mirwebapp/laser_map_metadata', mir_msgs.msg.LocalMapStat),
     # TopicConfig('mirwebapp/web_path', mir_msgs.msg.WebPath),
     # really mir_actions/MirMoveBaseActionFeedback:
     # TopicConfig('move_base/feedback', move_base_msgs.msg.MoveBaseActionFeedback,
@@ -434,40 +470,39 @@ PUB_TOPICS = [
     # TopicConfig('move_base_node/parameter_descriptions',
     #   dynamic_reconfigure.msg.ConfigDescription),
     # TopicConfig('move_base_node/parameter_updates', dynamic_reconfigure.msg.Config),
-    # TopicConfig('move_base_node/time_to_coll', std_msgs.msg.Float64),
-    # TopicConfig('move_base_node/traffic_costmap/inflated_obstacles', nav_msgs.msg.GridCells),
-    # TopicConfig('move_base_node/traffic_costmap/obstacles', nav_msgs.msg.GridCells),
+    TopicConfig('move_base_node/time_to_coll', std_msgs.msg.Float64),
+    TopicConfig('move_base_node/traffic_costmap/inflated_obstacles', nav_msgs.msg.GridCells, dict_filter=_convert_ros_header_recursive),
+    TopicConfig('move_base_node/traffic_costmap/obstacles', nav_msgs.msg.GridCells, dict_filter=_convert_ros_header_recursive),
     # TopicConfig('move_base_node/traffic_costmap/parameter_descriptions',
     #   dynamic_reconfigure.msg.ConfigDescription),
     # TopicConfig('move_base_node/traffic_costmap/parameter_updates',
     #  dynamic_reconfigure.msg.Config),
-    # TopicConfig('move_base_node/traffic_costmap/robot_footprint',
-    #   geometry_msgs.msg.PolygonStamped),
-    # TopicConfig('move_base_node/traffic_costmap/unknown_space', nav_msgs.msg.GridCells),
+    TopicConfig('move_base_node/traffic_costmap/robot_footprint', geometry_msgs.msg.PolygonStamped, dict_filter=_convert_ros_header_recursive),
+    TopicConfig('move_base_node/traffic_costmap/unknown_space', nav_msgs.msg.GridCells, dict_filter=_convert_ros_header_recursive),
     TopicConfig('move_base_node/visualization_marker', visualization_msgs.msg.Marker, dict_filter=_marker_dict_filter),
     TopicConfig('move_base_simple/visualization_marker', visualization_msgs.msg.Marker, dict_filter=_marker_dict_filter),
     TopicConfig('odom', nav_msgs.msg.Odometry, dict_filter=_odom_dict_filter),
-    # TopicConfig('odom_enc', nav_msgs.msg.Odometry),
+    TopicConfig('odom_enc', nav_msgs.msg.Odometry, dict_filter=_odom_dict_filter),
     # TopicConfig('one_way_map', nav_msgs.msg.OccupancyGrid),
     # TopicConfig('param_update', std_msgs.msg.String),
     # TopicConfig('particlevizmarker', visualization_msgs.msg.MarkerArray),
     # TopicConfig('resource_tracker/needed_resources', mir_msgs.msg.ResourcesState),
-    # TopicConfig('robot_mode', mir_msgs.msg.RobotMode),
-    # TopicConfig('robot_pose', geometry_msgs.msg.Pose),
-    # TopicConfig('robot_state', mir_msgs.msg.RobotState),
+    TopicConfig('robot_mode', mir_msgs.msg.RobotMode, dict_filter=_robot_mode_dict_filter),
+    TopicConfig('robot_pose', geometry_msgs.msg.Pose),
+    TopicConfig('robot_state', mir_msgs.msg.RobotState, dict_filter=_robot_state_dict_filter),
     # TopicConfig('robot_status', mir_msgs.msg.RobotStatus),
-    # TopicConfig('/rosout', rosgraph_msgs.msg.Log),
-    # TopicConfig('/rosout_agg', rosgraph_msgs.msg.Log),
-    # TopicConfig('scan', sensor_msgs.msg.LaserScan),
+    TopicConfig('/rosout', rcl_interfaces.msg.Log, dict_filter=_log_dict_filter),
+    TopicConfig('/rosout_agg', rcl_interfaces.msg.Log, dict_filter=_log_dict_filter),
+    TopicConfig('scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
+                qos_profile=qos_profile_sensor_data), #################################################### CHECK
     # TopicConfig('scan_filter/parameter_descriptions', dynamic_reconfigure.msg.ConfigDescription),
     # TopicConfig('scan_filter/parameter_updates', dynamic_reconfigure.msg.Config),
-    # TopicConfig('scan_filter/visualization_marker', visualization_msgs.msg.Marker),
+    TopicConfig('scan_filter/visualization_marker', visualization_msgs.msg.Marker, dict_filter=_marker_dict_filter),
     # TopicConfig('session_importer_node/info', mirSessionImporter.msg.SessionImportInfo),
     # TopicConfig('set_mc_PID', std_msgs.msg.Float64MultiArray),
     # let /tf be /tf if namespaced
-    TopicConfig('tf', TFMessage, dict_filter=_tf_dict_filter, topic_renamed='/tf'),
-    # TopicConfig('/tf_static', tf2_msgs.msg.TFMessage, dict_filter=_tf_static_dict_filter,
-    #             latch=True),
+    TopicConfig('tf', tf2_msgs.msg.TFMessage, dict_filter=_tf_dict_filter, topic_renamed='/tf'),
+    TopicConfig('/tf_static', tf2_msgs.msg.TFMessage, dict_filter=_tf_dict_filter, latch=True),
     # TopicConfig('traffic_map', nav_msgs.msg.OccupancyGrid),
     # TopicConfig('wifi_diagnostics', diagnostic_msgs.msg.DiagnosticArray),
     # TopicConfig('wifi_diagnostics/cur_ap', mir_wifi_msgs.msg.APInfo),
