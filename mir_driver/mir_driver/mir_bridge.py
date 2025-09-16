@@ -491,8 +491,8 @@ PUB_TOPICS = [
     TopicConfig('robot_pose', geometry_msgs.msg.Pose),
     TopicConfig('robot_state', mir_msgs.msg.RobotState, dict_filter=_robot_state_dict_filter),
     # TopicConfig('robot_status', mir_msgs.msg.RobotStatus),
-    TopicConfig('/rosout', rcl_interfaces.msg.Log, dict_filter=_log_dict_filter),
-    TopicConfig('/rosout_agg', rcl_interfaces.msg.Log, dict_filter=_log_dict_filter),
+    TopicConfig('rosout', rcl_interfaces.msg.Log, dict_filter=_log_dict_filter),
+    TopicConfig('rosout_agg', rcl_interfaces.msg.Log, dict_filter=_log_dict_filter),
     TopicConfig('scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
                 qos_profile=qos_profile_sensor_data), #################################################### CHECK
     # TopicConfig('scan_filter/parameter_descriptions', dynamic_reconfigure.msg.ConfigDescription),
@@ -502,7 +502,7 @@ PUB_TOPICS = [
     # TopicConfig('set_mc_PID', std_msgs.msg.Float64MultiArray),
     # let /tf be /tf if namespaced
     TopicConfig('tf', tf2_msgs.msg.TFMessage, dict_filter=_tf_dict_filter, topic_renamed='/tf'),
-    TopicConfig('/tf_static', tf2_msgs.msg.TFMessage, dict_filter=_tf_dict_filter, latch=True),
+    TopicConfig('tf_static', tf2_msgs.msg.TFMessage, dict_filter=_tf_dict_filter, latch=True),
     # TopicConfig('traffic_map', nav_msgs.msg.OccupancyGrid),
     # TopicConfig('wifi_diagnostics', diagnostic_msgs.msg.DiagnosticArray),
     # TopicConfig('wifi_diagnostics/cur_ap', mir_wifi_msgs.msg.APInfo),
