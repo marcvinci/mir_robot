@@ -6,6 +6,7 @@ from rclpy.node import Node
 from rclpy.action import ActionServer, CancelResponse
 from rclpy.action.server import ServerGoalHandle
 from rclpy.qos import qos_profile_system_default, qos_profile_sensor_data, QoSDurabilityPolicy
+from rclpy.event_handler import PublisherEventCallbacks, QoSPublisherMatchedInfo
 
 import time
 import copy
@@ -513,26 +514,36 @@ class PublisherWrapper(object):
         self.topic_config = topic_config
         self.robot = nh.robot
         self.connected = False
+        self.nh = nh
+
+        subscription_event_cb = PublisherEventCallbacks(matched=self.peer_subscribe)
 
         self.pub = nh.create_publisher(
             msg_type=topic_config.topic_type,
             topic=topic_config.topic_ros2_name,
-            qos_profile=topic_config.qos_profile
+            qos_profile=topic_config.qos_profile,
+            event_callbacks=subscription_event_cb
         )
 
         nh.get_logger().info("Publishing topic '%s' [%s]" %
                              (topic_config.topic_ros2_name, topic_config.topic_type.__module__))
         # latched topics must be subscribed immediately
-        # if topic_config.latch:
-        self.peer_subscribe(nh)
+        if topic_config.latch:
+            self.peer_subscribe()
 
-    def peer_subscribe(self, nh: Node) -> None:
+    def peer_subscribe(self, matched_info: QoSPublisherMatchedInfo = None) -> None:
         if not self.connected:
             self.connected = True
-            nh.get_logger().info("Starting to stream messages on topic '%s'" %
-                                 self.topic_config.topic)
+            self.nh.get_logger().info(f"Starting to stream messages on topic {self.topic_config.topic}")
             self.robot.subscribe(
                 topic=('/' + self.topic_config.topic), callback=self.callback)
+        elif self.connected and matched_info is not None:
+            if matched_info.current_count == 0 and not self.topic_config.latch:
+                pass
+            # doesn't work: once unsubscribed, robot doesn't let us subscribe again
+            # self.connected = False
+            # nh.get_logger().info("Stopping to stream messages on topic '%s'", self.topic_config.topic)
+            # self.robot.unsubscribe(topic=('/' + self.topic_config.topic))
 
     def callback(self, msg_dict: dict) -> None:
         if not isinstance(msg_dict, dict):   # can happen during recursion
