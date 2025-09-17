@@ -18,6 +18,7 @@
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSDurabilityPolicy
 from tf2_msgs.msg import TFMessage
 from rclpy.qos import QoSProfile, qos_profile_system_default
 
@@ -26,7 +27,9 @@ class remove_child_frames_node(Node):
 
     def __init__(self):
         super().__init__('tf_remove_child_frames')
-        remove_frames = self.declare_parameter('remove_frames', []).value
+        self.declare_parameter('remove_frames', rclpy.Parameter.Type.STRING_ARRAY)
+        remove_frames = self.get_parameter('remove_frames').get_parameter_value().string_array_value
+
         tf_pub = self.create_publisher(
             msg_type=TFMessage,
             topic='tf_out',
@@ -41,7 +44,7 @@ class remove_child_frames_node(Node):
 
         self.create_subscription(
             msg_type=TFMessage,
-            topic="tf",
+            topic="tf_in",
             callback=tf_cb,
             qos_profile=qos_profile_system_default
         )
@@ -49,8 +52,7 @@ class remove_child_frames_node(Node):
         tf_static_pub = self.create_publisher(
             msg_type=TFMessage,
             topic='tf_static_out',
-            qos_profile=QoSProfile(depth=1)
-            # latch
+            qos_profile=QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL)
         )
 
         def tf_static_cb(msg):
@@ -61,7 +63,7 @@ class remove_child_frames_node(Node):
 
         self.create_subscription(
             msg_type=TFMessage,
-            topic="tf_static",
+            topic="tf_static_in",
             callback=tf_static_cb,
             qos_profile=qos_profile_system_default
         )

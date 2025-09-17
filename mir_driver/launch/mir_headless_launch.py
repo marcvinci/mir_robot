@@ -71,19 +71,19 @@ def generate_launch_description():
             namespace=LaunchConfiguration('namespace'),
             output='screen'),
 
-        Node(
-            package='twist_stamper',
-            executable='twist_stamper',
-            name='twist_stamper_cmd_vel_mir',
-            parameters=[
-                {'use_sim_time': LaunchConfiguration('use_sim_time')}
-            ],
-            remappings=[
-                ('cmd_vel_in', 'cmd_vel'),
-                ('cmd_vel_out', 'cmd_vel_stamped'),
-            ],
-            namespace=LaunchConfiguration('namespace'),
-        ),
+        # Node(
+        #     package='twist_stamper',
+        #     executable='twist_stamper',
+        #     name='twist_stamper_cmd_vel_mir',
+        #     parameters=[
+        #         {'use_sim_time': LaunchConfiguration('use_sim_time')}
+        #     ],
+        #     remappings=[
+        #         ('cmd_vel_in', 'cmd_vel'),
+        #         ('cmd_vel_out', 'cmd_vel_stamped'),
+        #     ],
+        #     namespace=LaunchConfiguration('namespace'),
+        # ),
 
         # Node(
         #     package='ira_laser_tools',

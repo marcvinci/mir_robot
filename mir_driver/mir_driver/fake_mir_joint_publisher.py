@@ -22,7 +22,7 @@ class fake_mir_joint_publisher(Node):
                 qos_profile=qos_profile_system_default  # TODO Check QoS Settings
         )
 
-        pub_rate = 1.0  # seconds
+        pub_rate = 0.02  # seconds
         self.timer = self.create_timer(pub_rate, self.publish_joint_states)
 
     def publish_joint_states(self):
