@@ -25,7 +25,8 @@ setup(
             'mir_bridge = mir_driver.mir_bridge:main',
             'fake_mir_joint_publisher = mir_driver.fake_mir_joint_publisher:main',
             'time_synchronizer = mir_driver.time_synchronizer:main',
-            'tf_remove_child_frames = mir_driver.tf_remove_child_frames:main'
+            'tf_remove_child_frames = mir_driver.tf_remove_child_frames:main',
+            'rep117_filter = mir_driver.rep117_filter:main'
         ],
     },
 )
