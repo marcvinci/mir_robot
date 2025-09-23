@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import rclpy
 from rclpy.node import Node
-from rclpy.action import ActionServer, CancelResponse
+from rclpy.action import ActionServer, CancelResponse, ActionClient
 from rclpy.action.server import ServerGoalHandle
 from rclpy.qos import qos_profile_system_default, qos_profile_sensor_data, QoSDurabilityPolicy
 from rclpy.event_handler import PublisherEventCallbacks, QoSPublisherMatchedInfo
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 
 import time
 import copy
@@ -494,7 +496,7 @@ PUB_TOPICS = [
     TopicConfig('rosout', rcl_interfaces.msg.Log, dict_filter=_log_dict_filter),
     TopicConfig('rosout_agg', rcl_interfaces.msg.Log, dict_filter=_log_dict_filter),
     TopicConfig('scan', sensor_msgs.msg.LaserScan, dict_filter=_convert_ros_header_recursive,
-                qos_profile=qos_profile_sensor_data), #################################################### CHECK
+                qos_profile=qos_profile_sensor_data),
     # TopicConfig('scan_filter/parameter_descriptions', dynamic_reconfigure.msg.ConfigDescription),
     # TopicConfig('scan_filter/parameter_updates', dynamic_reconfigure.msg.Config),
     TopicConfig('scan_filter/visualization_marker', visualization_msgs.msg.Marker, dict_filter=_marker_dict_filter),
@@ -627,6 +629,7 @@ class ActionWrapper(object):
             action_name=action_config.action_topic,
             execute_callback=self.execute_callback,
             cancel_callback=self.cancel_callback,
+            callback_group=MutuallyExclusiveCallbackGroup(),
         )
 
         nh.get_logger().info(f"Creating action server at '{action_config.action_topic}' [{action_config.action_type.__module__}]")
@@ -818,6 +821,8 @@ class MiR100BridgeNode(Node):
                     f"Action {'/' + action.mir_action_topic + '/goal'} is not yet subscribed to by the MiR"
                 )
 
+        self._move_base_client = ActionClient(self, NavigateToPose, 'nav2/navigate_to_pose', callback_group=MutuallyExclusiveCallbackGroup())
+        self.create_subscription(geometry_msgs.msg.PoseStamped, 'move_base_simple/goal', self._move_base_simple_goal_callback, 10, callback_group=MutuallyExclusiveCallbackGroup())
         self.mir_bridge_ready = True
 
     def get_topics(self) -> list:
@@ -865,8 +870,15 @@ class MiR100BridgeNode(Node):
         self.robot.close()
         super().destroy_node()
 
+    def _move_base_simple_goal_callback(self, msg):
+        if not self._move_base_client.wait_for_server(timeout_sec=2.0):
+            self.get_logger().warn("Could not connect to 'move_base' server after two seconds. Dropping goal.")
+            self.get_logger().warn("Did you activate 'planner' in the MIR web interface?")
+            return
+        goal = NavigateToPose.Goal()
+        goal.pose = copy.deepcopy(msg)
+        self._move_base_client.send_goal(goal)
 
-from rclpy.executors import MultiThreadedExecutor
 
 def main(args: list | None = None) -> None:
     rclpy.init(args=args)
